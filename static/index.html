@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>СИБКОМПЛЕКТ — AI Ассистент</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #0a1628; min-height: 100vh; display: flex; align-items: center; justify-content: center; color: #fff; }
+    .demo-bg { position: fixed; inset: 0; background: radial-gradient(ellipse 80% 60% at 50% 0%, #0d2a5e 0%, transparent 70%), linear-gradient(180deg, #0a1628 0%, #061020 100%); z-index: 0; }
+    .demo-text { position: relative; z-index: 1; text-align: center; opacity: .15; font-family: 'Montserrat', sans-serif; pointer-events: none; }
+    .demo-text h1 { font-size: clamp(32px,5vw,72px); font-weight: 700; }
+    .demo-text p { font-size: 18px; margin-top: 12px; }
+
+    #chatTrigger { position: fixed; bottom: 28px; right: 28px; z-index: 9000; width: 60px; height: 60px; background: #1a56db; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 24px rgba(26,86,219,.5); transition: transform .2s, box-shadow .2s; }
+    #chatTrigger:hover { transform: scale(1.08); box-shadow: 0 6px 32px rgba(26,86,219,.7); }
+    #chatTrigger svg { width: 28px; height: 28px; color: #fff; }
+    #chatTrigger .trigger-close { display: none; }
+    #chatTrigger.open .trigger-open { display: none; }
+    #chatTrigger.open .trigger-close { display: block; }
+    #triggerBadge { position: absolute; top: -2px; right: -2px; width: 18px; height: 18px; border-radius: 50%; background: #e63946; color: #fff; font-size: 10px; font-weight: 700; display: none; align-items: center; justify-content: center; border: 2px solid #0a1628; }
+    #triggerBadge.show { display: flex; }
+
+    #chatTooltip { position: fixed; bottom: 100px; right: 28px; z-index: 8999; background: #fff; color: #0a1628; border-radius: 12px; padding: 12px 16px; font-size: 13px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,.2); max-width: 220px; line-height: 1.5; animation: tooltip-in .4s ease-out both; cursor: pointer; }
+    #chatTooltip::after { content: ''; position: absolute; bottom: -8px; right: 22px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid #fff; }
+    @keyframes tooltip-in { from { opacity: 0; transform: translateY(10px); } }
+
+    #chatWidget { position: fixed; bottom: 100px; right: 28px; z-index: 9001; width: 380px; height: 580px; background: #0d1f3c; border-radius: 16px; border: 1px solid rgba(255,255,255,.1); box-shadow: 0 16px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(26,86,219,.2); display: flex; flex-direction: column; overflow: hidden; transform: scale(.92) translateY(16px); opacity: 0; pointer-events: none; transition: transform .25s cubic-bezier(.34,1.56,.64,1), opacity .2s ease; transform-origin: bottom right; }
+    #chatWidget.open { transform: scale(1) translateY(0); opacity: 1; pointer-events: all; }
+
+    .w-header { background: linear-gradient(135deg, #1a3a6e 0%, #0f2654 100%); padding: 14px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .w-avatar { width: 38px; height: 38px; flex-shrink: 0; background: #1a56db; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px; color: #fff; }
+    .w-title { flex: 1; }
+    .w-title h3 { font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 700; color: #fff; letter-spacing: .3px; }
+    .w-title p { font-size: 11px; color: rgba(255,255,255,.5); margin-top: 1px; }
+    .w-online { display: flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,.5); }
+    .w-online::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #2dce72; box-shadow: 0 0 6px #2dce72; animation: pulse-dot 2s ease-in-out infinite; }
+    @keyframes pulse-dot { 50% { opacity: .5; } }
+    .w-hbtn { width: 28px; height: 28px; border-radius: 7px; background: none; border: none; cursor: pointer; color: rgba(255,255,255,.4); display: flex; align-items: center; justify-content: center; transition: background .15s, color .15s; }
+    .w-hbtn:hover { background: rgba(255,255,255,.1); color: #fff; }
+    .w-hbtn svg { width: 15px; height: 15px; }
+
+    .w-messages { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; min-height: 0; }
+    .w-messages::-webkit-scrollbar { width: 3px; }
+    .w-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
+
+    .w-welcome { text-align: center; padding: 8px 0 4px; }
+    .w-welcome-icon { width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(135deg, #1a56db, #0d3a9e); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; box-shadow: 0 4px 16px rgba(26,86,219,.4); font-size: 22px; }
+    .w-welcome h4 { font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .w-welcome p { font-size: 12px; color: rgba(255,255,255,.5); line-height: 1.6; }
+    .w-welcome-tip { margin-top: 10px; padding: 10px 12px; background: rgba(26,86,219,.12); border: 1px solid rgba(26,86,219,.25); border-radius: 10px; color: rgba(255,255,255,.7) !important; font-size: 11.5px !important; }
+
+    .w-msg { display: flex; gap: 8px; }
+    .w-msg.user { flex-direction: row-reverse; }
+    .w-msg-av { width: 28px; height: 28px; flex-shrink: 0; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; font-family: 'Montserrat', sans-serif; }
+    .w-msg.bot .w-msg-av { background: rgba(26,86,219,.25); color: #5b8dee; }
+    .w-msg.user .w-msg-av { background: rgba(255,255,255,.08); color: rgba(255,255,255,.5); }
+    .w-msg-body { max-width: 82%; min-width: 0; overflow: hidden; }
+    .w-msg-bubble { padding: 9px 13px; border-radius: 12px; font-size: 13px; line-height: 1.55; word-break: break-word; overflow-wrap: anywhere; }
+    .w-msg.bot .w-msg-bubble { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); border-top-left-radius: 3px; color: rgba(255,255,255,.9); }
+    .w-msg.user .w-msg-bubble { background: #1a56db; border-top-right-radius: 3px; color: #fff; }
+    .w-msg-time { font-size: 10px; color: rgba(255,255,255,.25); margin-top: 3px; }
+    .w-msg.bot .w-msg-time { text-align: left; }
+    .w-msg.user .w-msg-time { text-align: right; }
+    .w-msg-bubble strong { color: #7eb3ff; font-weight: 600; }
+    .w-msg-bubble em { color: #ffd166; font-style: normal; }
+
+    .w-typing { display: flex; gap: 8px; align-items: center; }
+    .w-dots { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; border-top-left-radius: 3px; padding: 10px 14px; display: flex; gap: 4px; align-items: center; }
+    .w-dots span { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,.3); animation: wdot .7s ease-in-out infinite; }
+    .w-dots span:nth-child(2) { animation-delay: .12s; }
+    .w-dots span:nth-child(3) { animation-delay: .24s; }
+    @keyframes wdot { 0%,100%{transform:translateY(0);opacity:.3} 50%{transform:translateY(-4px);opacity:1} }
+
+    /* Input area — не растягивается, flex-shrink:0 */
+    .w-input-area { padding: 10px 12px 12px; flex-shrink: 0; border-top: 1px solid rgba(255,255,255,.06); background: rgba(0,0,0,.2); }
+
+    #attachedFiles { display: none; flex-direction: row; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; max-height: 60px; overflow-y: auto; }
+    #attachedFiles::-webkit-scrollbar { width: 2px; }
+    #attachedFiles::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); }
+    #attachedFiles.show { display: flex; }
+    .attached-item { display: inline-flex; align-items: center; gap: 4px; background: rgba(26,86,219,.15); border: 1px solid rgba(26,86,219,.3); border-radius: 4px; padding: 2px 6px; font-size: 10px; color: rgba(255,255,255,.6); max-width: 120px; min-width: 0; }
+    .attached-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+    .attached-item .rm-btn { background: none; border: none; color: rgba(255,255,255,.3); cursor: pointer; font-size: 12px; line-height: 1; flex-shrink: 0; padding: 0; margin-left: 2px; }
+    .attached-item .rm-btn:hover { color: #e63946; }
+
+    .w-input-row { display: flex; gap: 6px; align-items: flex-end; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 4px 4px 4px 12px; transition: border-color .2s; }
+    .w-input-row:focus-within { border-color: rgba(26,86,219,.6); box-shadow: 0 0 0 2px rgba(26,86,219,.15); }
+
+    /* КЛЮЧЕВОЕ: textarea с ограничением высоты */
+    #wInput {
+      flex: 1; background: none; border: none; outline: none;
+      color: #fff; font-family: 'Inter', sans-serif; font-size: 13px;
+      padding: 8px 0; resize: none;
+      min-height: 36px; max-height: 80px;
+      overflow-y: auto; line-height: 1.4;
+    }
+    #wInput::-webkit-scrollbar { width: 2px; }
+    #wInput::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
+    #wInput::placeholder { color: rgba(255,255,255,.25); }
+
+    .w-input-btns { display: flex; gap: 3px; align-items: flex-end; padding: 3px; }
+    .w-ibtn { width: 32px; height: 32px; border-radius: 7px; background: none; border: none; cursor: pointer; color: rgba(255,255,255,.3); display: flex; align-items: center; justify-content: center; transition: all .15s; }
+    .w-ibtn:hover { color: rgba(255,255,255,.7); background: rgba(255,255,255,.08); }
+    .w-ibtn svg { width: 16px; height: 16px; }
+    #wSend { width: 32px; height: 32px; border-radius: 7px; background: #1a56db; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
+    #wSend:hover { background: #2563eb; }
+    #wSend svg { width: 15px; height: 15px; color: #fff; }
+    .w-hint { text-align: center; font-size: 10px; color: rgba(255,255,255,.2); margin-top: 7px; }
+    .w-msg, .w-typing { animation: wmsg-in .25s ease-out both; }
+    @keyframes wmsg-in { from { opacity: 0; transform: translateY(8px); } }
+
+    @media (max-width: 480px) {
+      #chatWidget { width: calc(100vw - 24px); right: 12px; bottom: 88px; height: calc(100vh - 120px); }
+      #chatTrigger { right: 16px; bottom: 20px; }
+      #chatTooltip { right: 16px; }
+    }
+
+    .kp-download-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: linear-gradient(135deg, #1a56db, #2563eb);
+      color: white;
+      padding: 16px 20px;
+      border-radius: 12px;
+      text-decoration: none;
+      margin-top: 8px;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 2px 12px rgba(26,86,219,0.3);
+    }
+    .kp-download-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(26,86,219,0.4);
+    }
+    .kp-icon { font-size: 28px; }
+    .kp-text { flex: 1; display: flex; flex-direction: column; }
+    .kp-text b { font-size: 15px; margin-bottom: 2px; }
+    .kp-text small { font-size: 12px; opacity: 0.85; }
+    .kp-arrow { font-size: 20px; }
+</style>
+</head>
+<body>
+
+<div class="demo-bg"></div>
+<div class="demo-text">
+  <h1>sibkomplekt.ru</h1>
+  <p>Здесь находится сайт — виджет бота в правом нижнем углу</p>
+</div>
+
+<div id="chatTooltip" onclick="openWidget()">
+  ⚡ Подберём оборудование по вашему ТЗ за 2 минуты
+</div>
+
+<div id="chatWidget">
+  <div class="w-header">
+    <div class="w-avatar">СК</div>
+    <div class="w-title">
+      <h3>СИБКОМПЛЕКТ</h3>
+      <p>AI-ассистент по оборудованию</p>
+    </div>
+    <div class="w-online">Онлайн</div>
+    <div class="w-header-actions">
+      <button class="w-hbtn" onclick="closeWidget()" title="Свернуть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="w-messages" id="wMessages">
+    <div class="w-welcome" id="wWelcome">
+      <div class="w-welcome-icon">⚡</div>
+      <h4>Добрый день!</h4>
+      <p>Загрузите техническое задание — PDF, Word, Excel или фото. Можно выбрать сразу несколько файлов.</p>
+      <p class="w-welcome-tip">💡 Для точной проверки по ПУЭ загружайте документы в PDF — распознавание работает лучше, чем с фото.</p>
+    </div>
+  </div>
+
+  <div class="w-input-area">
+    <div id="attachedFiles"></div>
+    <div class="w-input-row">
+      <textarea id="wInput" placeholder="Напишите вопрос или прикрепите файлы..." rows="1"></textarea>
+      <div class="w-input-btns">
+        <label class="w-ibtn" for="wFileInput" title="Прикрепить файлы">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </label>
+        <input type="file" id="wFileInput" accept=".pdf,.jpg,.jpeg,.png,.txt,.docx,.xlsx" multiple style="display:none">
+        <button id="wSend" onclick="handleSend()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="w-hint">Enter — отправить · Shift+Enter — новая строка · PDF/фото — разбор ТЗ</div>
+  </div>
+</div>
+
+<button id="chatTrigger" onclick="toggleWidget()">
+  <svg class="trigger-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+  </svg>
+  <svg class="trigger-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+    <path d="M18 6L6 18M6 6l12 12"/>
+  </svg>
+  <div id="triggerBadge">1</div>
+</button>
+
+<script>
+let SESSION_ID = null;
+let widgetOpen = false;
+let pendingFiles = [];
+
+async function init() {
+  try {
+    const res = await fetch('/api/session').then(r => r.json());
+    if (res?.session_id) SESSION_ID = res.session_id;
+  } catch(e) { console.error('Init error:', e); }
+}
+
+function openWidget() {
+  widgetOpen = true;
+  document.getElementById('chatWidget').classList.add('open');
+  document.getElementById('chatTrigger').classList.add('open');
+  document.getElementById('chatTooltip').style.display = 'none';
+  document.getElementById('triggerBadge').classList.remove('show');
+  setTimeout(() => document.getElementById('wInput').focus(), 300);
+}
+
+function closeWidget() {
+  widgetOpen = false;
+  document.getElementById('chatWidget').classList.remove('open');
+  document.getElementById('chatTrigger').classList.remove('open');
+}
+
+function toggleWidget() { widgetOpen ? closeWidget() : openWidget(); }
+function hideWelcome() { document.getElementById('wWelcome')?.remove(); }
+function now() { return new Date().toLocaleTimeString('ru', {hour:'2-digit', minute:'2-digit'}); }
+
+function renderMd(t) {
+  return t
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`(.+?)`/g,'<code>$1</code>')
+    .replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>');
+}
+
+function appendMsg(role, text) {
+  hideWelcome();
+  const box = document.getElementById('wMessages');
+  // Убираем typing временно
+  const typing = document.getElementById('wTyping');
+  if (typing) typing.remove();
+
+  const div = document.createElement('div');
+  div.className = `w-msg ${role}`;
+  div.innerHTML = `
+    <div class="w-msg-av">${role === 'bot' ? 'СК' : 'Вы'}</div>
+    <div class="w-msg-body">
+      <div class="w-msg-bubble">${renderMd(text)}</div>
+      <div class="w-msg-time">${now()}</div>
+    </div>`;
+  box.appendChild(div);
+
+  // Возвращаем typing в конец если был
+  if (typing) box.appendChild(typing);
+
+  box.scrollTop = box.scrollHeight;
+}
+
+function showTyping() {
+  const box = document.getElementById('wMessages');
+  const el = document.createElement('div');
+  el.className = 'w-typing'; el.id = 'wTyping';
+  el.innerHTML = `
+    <div class="w-msg-av" style="background:rgba(26,86,219,.25);color:#5b8dee;font-size:11px;font-weight:700">СК</div>
+    <div class="w-dots"><span></span><span></span><span></span></div>`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+function hideTyping() { document.getElementById('wTyping')?.remove(); }
+
+function renderFileList() {
+  const container = document.getElementById('attachedFiles');
+  if (pendingFiles.length === 0) {
+    container.innerHTML = '';
+    container.classList.remove('show');
+    return;
+  }
+  container.innerHTML = pendingFiles.map((f, i) => `
+    <div class="attached-item">
+      <span>📎 ${f.name}</span>
+      <button class="rm-btn" data-idx="${i}">×</button>
+    </div>
+  `).join('');
+  container.classList.add('show');
+  container.querySelectorAll('.rm-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      pendingFiles.splice(Number(btn.dataset.idx), 1);
+      renderFileList();
+    });
+  });
+}
+
+document.getElementById('wFileInput').addEventListener('change', function(e) {
+  Array.from(e.target.files).forEach(f => {
+    if (!pendingFiles.find(p => p.name === f.name)) pendingFiles.push(f);
+  });
+  renderFileList();
+  this.value = '';
+});
+
+async function handleSend() {
+  const inp = document.getElementById('wInput');
+  const text = inp.value.trim();
+  if (!pendingFiles.length && !text) return;
+
+  if (!_phoneVerified) {
+    showPhoneModal(() => handleSend());
+    return;
+  }
+
+  if (pendingFiles.length > 0) {
+    await uploadAndSearch(text);
+  } else if (text) {
+    await sendTextMsg(text);
+  }
+}
+
+async function uploadAndSearch(comment = '') {
+  const files = [...pendingFiles];
+  pendingFiles = [];
+  renderFileList();
+
+  const inp = document.getElementById('wInput');
+  inp.value = '';
+  inp.style.height = '';
+
+  function declFiles(n) {
+    if (n % 10 === 1 && n % 100 !== 11) return `${n} файл`;
+    if (n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14)) return `${n} файла`;
+    return `${n} файлов`;
+  }
+  let label = files.length === 1 ? `📎 ${files[0].name}` : `📎 ${declFiles(files.length)}`;
+  if (comment) label += `\n${comment}`;
+  appendMsg('user', label);
+  showTyping();
+
+  const errors = [];
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('session_id', SESSION_ID);
+    if (comment) fd.append('comment', comment);
+    try {
+      const res = await fetch('/api/upload', {method: 'POST', body: fd}).then(r => r.json());
+      if (!res.success) {
+        errors.push(`${file.name}: ${res.message}`);
+      } else if (res.pue_violations && res.pue_violations.trim().length > 0) {
+        appendMsg('bot', `⚠️ **Замечания по ПУЭ-7**\nФайл: ${file.name}\n\n${res.pue_violations}`);
+      }
+    } catch(e) { errors.push(`${file.name}: ошибка загрузки`); }
+  }
+
+  if (errors.length === files.length) {
+    hideTyping();
+    appendMsg('bot', '⚠️ Не удалось обработать файлы:\n' + errors.join('\n'));
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: SESSION_ID})
+    }).then(r => r.json());
+    hideTyping();
+    if (errors.length > 0) appendMsg('bot', `⚠️ Не обработаны: ${errors.join(', ')}`);
+    if (res.success) {
+      appendMsg('bot', res.message || 'КП готово');
+      if (res.kp_file && res.kp_filename) {
+        appendDownloadButton(res.kp_filename);
+      }
+    } else {
+      appendMsg('bot', `⚠️ ${res.message}`);
+    }
+  } catch(e) { hideTyping(); appendMsg('bot', 'Ошибка поиска'); }
+}
+
+async function sendTextMsg(msg) {
+  const inp = document.getElementById('wInput');
+  inp.value = '';
+  inp.style.height = '';
+  appendMsg('user', msg);
+  showTyping();
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: SESSION_ID, message: msg})
+    }).then(r => r.json());
+    hideTyping();
+    appendMsg('bot', res.response || 'Нет ответа');
+  } catch(e) { hideTyping(); appendMsg('bot', 'Ошибка соединения'); }
+}
+
+function appendDownloadButton(filename) {
+  const box = document.getElementById('wMessages');
+  const div = document.createElement('div');
+  div.className = 'w-msg bot';
+  const url = `/api/download_kp/${SESSION_ID}/${encodeURIComponent(filename)}`;
+  div.innerHTML = `
+    <a href="${url}" download="${filename}" class="kp-download-btn">
+      <span class="kp-icon">📄</span>
+      <span class="kp-text">
+        <b>Скачать коммерческое предложение</b>
+        <small>${filename}</small>
+      </span>
+      <span class="kp-arrow">⬇</span>
+    </a>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function appendProductCards(cards) {
+  if (!cards || !cards.length) return;
+  const box = document.getElementById('wMessages');
+  const div = document.createElement('div');
+  div.className = 'w-msg bot';
+  const cardsHtml = cards.map(c => {
+    const name = c.name || c.source_name || 'Товар';
+    const art = c.article || '';
+    const url = c.url || '';
+    const price = c.price_with_vat || 0;
+    const qty = c.source_qty || 1;
+    const unit = c.source_unit || 'шт';
+    const total = price * qty;
+    return `<div style="background:rgba(26,86,219,.1);border:1px solid rgba(26,86,219,.2);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="font-size:13px;color:#fff;font-weight:500;margin-bottom:4px">${c.found ? '✅' : '🔍'} ${name}</div>
+      ${art ? `<div style="font-size:11px;color:#7eb3ff;font-family:monospace;margin-bottom:4px">Арт: ${art}</div>` : ''}
+      <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+        <span style="font-size:11px;color:rgba(255,255,255,.5)">${qty} ${unit}</span>
+        ${price > 0
+          ? `<span style="font-size:13px;font-weight:600;color:#ffd166">${Number(price).toLocaleString('ru')} ₽/ед</span>${qty > 1 ? `<span style="font-size:14px;font-weight:700;color:#4ade80">= ${Number(total).toLocaleString('ru')} ₽</span>` : ''}`
+          : '<span style="font-size:11px;color:rgba(255,255,255,.4)">уточните у менеджера</span>'}
+        ${c.found ? '<span style="font-size:11px;color:#2dce72">● в наличии</span>' : ''}
+      </div>
+      ${url && c.found
+        ? `<a href="${url}" target="_blank" style="display:inline-block;margin-top:8px;font-size:12px;color:#5b8dee;text-decoration:none;padding:6px 10px;background:rgba(26,86,219,.2);border-radius:6px;width:100%;text-align:center;box-sizing:border-box">🛒 Открыть в ETM ↗</a>`
+        : ''}
+    </div>`;
+  }).join('');
+  div.innerHTML = `
+    <div class="w-msg-av" style="background:rgba(26,86,219,.25);color:#5b8dee;font-size:11px;font-weight:700">СК</div>
+    <div class="w-msg-body">
+      <div class="w-msg-bubble">
+        <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px">📦 НАЙДЕННЫЕ ПОЗИЦИИ:</div>
+        ${cardsHtml}
+        <div style="font-size:10px;color:rgba(255,255,255,.25);margin-top:8px;text-align:center">💡 Для точных цен свяжитесь с менеджером</div>
+      </div>
+      <div class="w-msg-time">${now()}</div>
+    </div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+document.getElementById('wInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+});
+
+// Авторастяжение до max-height, потом скролл
+document.getElementById('wInput').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 80) + 'px';
+});
+
+init();
+
+  // ── Phone gate ────────────────────────────────────────────────
+  let _phoneVerified = !!localStorage.getItem('sk_phone');
+  let _pendingAction = null;
+
+  function formatPhone(input) {
+    let v = input.value.replace(/\D/g, '');
+    if (v.startsWith('8')) v = '7' + v.slice(1);
+    if (!v.startsWith('7')) v = '7' + v;
+    v = v.slice(0, 11);
+    let out = '+7';
+    if (v.length > 1) out += ' (' + v.slice(1, 4);
+    if (v.length > 4) out += ') ' + v.slice(4, 7);
+    if (v.length > 7) out += '-' + v.slice(7, 9);
+    if (v.length > 9) out += '-' + v.slice(9, 11);
+    input.value = out;
+  }
+
+  function showPhoneModal(action) {
+    _pendingAction = action;
+    document.getElementById('phoneModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('phoneInput').focus(), 100);
+  }
+
+  async function submitPhone() {
+    const raw = document.getElementById('phoneInput').value.replace(/\D/g, '');
+    if (raw.length !== 11 || !raw.startsWith('7')) {
+      document.getElementById('phoneError').style.display = 'block';
+      return;
+    }
+    document.getElementById('phoneError').style.display = 'none';
+    document.getElementById('phoneModal').style.display = 'none';
+    localStorage.setItem('sk_phone', raw);
+    _phoneVerified = true;
+
+    // Отправляем номер на сервер для сохранения
+    try {
+      await fetch('/api/register_phone', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: SESSION_ID, phone: raw})
+      });
+    } catch(e) { console.warn('Phone register error:', e); }
+
+    if (_pendingAction) { _pendingAction(); _pendingAction = null; }
+  }
+
+  // Allow Enter in phone input
+  document.addEventListener('DOMContentLoaded', () => {
+    const pi = document.getElementById('phoneInput');
+    if (pi) pi.addEventListener('keydown', e => { if (e.key === 'Enter') submitPhone(); });
+  });
+
+</script>
+
+  <!-- Phone modal -->
+  <div id="phoneModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:none;align-items:center;justify-content:center;">
+    <div style="background:#1e2a3a;border-radius:16px;padding:32px 28px;width:320px;box-shadow:0 8px 32px rgba(0,0,0,.4);">
+      <div style="font-size:20px;font-weight:600;color:#fff;margin-bottom:8px;">Введите номер телефона</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:20px;">Для получения ответа укажите ваш номер. Мы свяжемся с вами при необходимости.</div>
+      <input id="phoneInput" type="tel" placeholder="+7 (___) ___-__-__"
+        style="width:100%;box-sizing:border-box;background:#0f1a27;border:1.5px solid rgba(255,255,255,.15);border-radius:10px;padding:12px 14px;color:#fff;font-size:15px;outline:none;margin-bottom:16px;"
+        oninput="formatPhone(this)"
+      />
+      <div id="phoneError" style="color:#f87171;font-size:12px;margin-bottom:12px;display:none;">Введите корректный российский номер</div>
+      <button onclick="submitPhone()"
+        style="width:100%;background:#1a56db;color:#fff;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;">
+        Продолжить
+      </button>
+    </div>
+  </div>
+
+</body>
+</html>
