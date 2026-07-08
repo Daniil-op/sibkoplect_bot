@@ -3,6 +3,7 @@ FastAPI приложение — главная точка входа.
 СИБКОМПЛЕКТ — AI Ассистент по подбору электрооборудования.
 """
 
+import os
 import uuid
 import logging
 import shutil
@@ -27,6 +28,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Создаём папку uploads при старте
+os.makedirs("uploads", exist_ok=True)
 
 app = FastAPI(title="СИБКОМПЛЕКТ — AI Ассистент", version="1.0.0")
 
@@ -99,6 +103,9 @@ async def upload_document(
     """
     allowed_ext = {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".txt", ".docx", ".xlsx"}
     suffix = Path(file.filename or "").suffix.lower()
+
+    logger.info(f"Upload attempt: {file.filename} ({suffix}), content_type: {file.content_type}")
+
     if suffix not in allowed_ext:
         raise HTTPException(status_code=400, detail=f"Формат {suffix} не поддерживается")
 
@@ -110,7 +117,9 @@ async def upload_document(
     try:
         with open(save_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
+        logger.info(f"File saved: {save_path} ({save_path.stat().st_size} bytes)")
     except Exception as exc:
+        logger.error(f"Save error for {file.filename}: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка сохранения файла: {exc}")
 
     try:
