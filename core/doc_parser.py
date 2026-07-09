@@ -350,7 +350,7 @@ def _pdf_pages_to_images(pdf_path: Path) -> list[dict]:
     try:
         import pdf2image
         import io
-        pages = pdf2image.convert_from_path(str(pdf_path), dpi=150, fmt="jpeg", poppler_path=r"C:\Users\danya\sibkomplekt_bot\poppler-26.02.0\Library\bin")
+        pages = pdf2image.convert_from_path(str(pdf_path), dpi=150, fmt="jpeg")
         for page_img in pages[:5]:
             buf = io.BytesIO()
             page_img.save(buf, format="JPEG", quality=85)
