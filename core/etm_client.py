@@ -3,6 +3,11 @@ ETM API client — ipro.etm.ru/api/v1
 Поиск через номенклатуру клиента (JSON файл cligds).
 """
 
+import os
+import gc
+import json
+import sys
+import tempfile
 import asyncio
 import time
 import logging
@@ -190,19 +195,54 @@ class ETMClient:
             return
 
         logger.info("ETM: загружаю номенклатуру клиента...")
+
+        # Стримим JSON во временный файл — не держим весь ответ в памяти.
+        # На 512 МБ хостинга это критично: полный ответ + распарсенные объекты не влезают.
+        tmp_path = None
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                r = await client.get(
-                    NOMENCLATURE_FILE_URL,
-                    params={"session-id": session_key},
-                )
-                items = r.json()
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+                tmp_path = tmp.name
+                async with httpx.AsyncClient(timeout=120) as client:
+                    async with client.stream(
+                        "GET", NOMENCLATURE_FILE_URL, params={"session-id": session_key}
+                    ) as r:
+                        async for chunk in r.aiter_bytes(chunk_size=262144):
+                            tmp.write(chunk)
         except Exception as exc:
             logger.warning("ETM: ошибка загрузки: %s", exc)
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
             return
 
-        if not isinstance(items, list):
-            items = items.get("data", []) if isinstance(items, dict) else []
+        # Парсим файл, оставляя только нужные поля.
+        # Полные записи ETM содержат 20+ полей — на 140k позиций это сотни МБ.
+        items = []
+        try:
+            with open(tmp_path, "r", encoding="utf-8") as f:
+                raw_items = json.load(f)
+
+            if not isinstance(raw_items, list):
+                raw_items = raw_items.get("data", []) if isinstance(raw_items, dict) else []
+
+            for raw in raw_items:
+                items.append({
+                    "id": raw.get("id"),
+                    "name": str(raw.get("name", "") or ""),
+                    "article": str(raw.get("article", "") or ""),
+                    "brand": sys.intern(str(raw.get("brand", "") or "")),
+                    "brand_code": str(raw.get("brand_code", "") or ""),
+                    "cli_code": str(raw.get("cli_code", "") or ""),
+                })
+
+            raw_items.clear()
+            del raw_items
+            gc.collect()
+        except Exception as exc:
+            logger.warning("ETM: ошибка парсинга номенклатуры: %s", exc)
+            return
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
         _nom_items = items
         logger.info("ETM: загружено %d позиций", len(items))
@@ -212,11 +252,11 @@ class ETMClient:
 
         for item in items:
             for field in ("article", "brand_code", "cli_code"):
-                val = str(item.get(field, "") or "").strip()
+                val = item[field].strip()
                 if val and len(val) >= 3:
                     by_article[val.lower()] = item
 
-            name = str(item.get("name", "") or "").strip()
+            name = item["name"].strip()
             if not name:
                 continue
             for token in _tokenize(name):
@@ -226,6 +266,7 @@ class ETMClient:
 
         _nom_by_article = by_article
         _nom_by_words = by_words
+        gc.collect()
         logger.info("ETM: индекс — %d артикулов, %d токенов", len(by_article), len(by_words))
 
     # ── Поиск в номенклатуре ─────────────────────────────────────────
