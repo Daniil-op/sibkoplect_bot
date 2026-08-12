@@ -384,7 +384,7 @@ async function uploadAndSearch(comment = '') {
     hideTyping();
     if (errors.length > 0) appendMsg('bot', `⚠️ Не обработаны: ${errors.join(', ')}`);
     if (res.success) {
-      appendMsg('bot', res.message || 'КП готово');
+      appendMsg('bot', res.response || res.message || 'КП готово');
       if (res.kp_file && res.kp_filename) {
         appendDownloadButton(res.kp_filename);
       }
@@ -408,6 +408,7 @@ async function sendTextMsg(msg) {
     }).then(r => r.json());
     hideTyping();
     appendMsg('bot', res.response || 'Нет ответа');
+    if (res.kp_filename) appendDownloadButton(res.kp_filename);
   } catch(e) { hideTyping(); appendMsg('bot', 'Ошибка соединения'); }
 }
 

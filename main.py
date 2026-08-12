@@ -22,6 +22,7 @@ from core.orchestrator import (
     generate_kp_for_session,
     get_or_create_session,
 )
+from core import dialog
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,11 +85,23 @@ async def chat(req: ChatRequest):
     if not req.session_id or not req.message.strip():
         raise HTTPException(status_code=400, detail="session_id и message обязательны")
     try:
+        session = get_or_create_session(req.session_id)
+        if dialog.is_active(session):
+            result = await dialog.handle(session, req.message)
+            return {"success": True, "response": result["response"],
+                    "kp_file": result.get("kp_file"), "kp_filename": result.get("kp_filename")}
         response = await chat_message(req.session_id, req.message)
         return {"success": True, "response": response}
     except Exception as exc:
         logger.error("Chat error: %s", exc, exc_info=True)
         return {"success": False, "response": f"Ошибка: {exc}"}
+
+
+@app.post("/api/reset")
+async def reset_session(req: SearchRequest):
+    session = get_or_create_session(req.session_id)
+    session.reset_products()
+    return {"success": True, "response": "Начинаем новый расчёт — предыдущие файлы очищены."}
 
 
 @app.post("/api/upload")
@@ -132,16 +145,15 @@ async def upload_document(
 
 @app.post("/api/search")
 async def search_in_etm(req: SearchRequest):
-    """
-    Запускает поиск по ETM для всех накопленных позиций из загруженных файлов.
-    Вызывается после того как все файлы загружены.
-    """
+    """После загрузки файлов запускает опросник (диалог)."""
     try:
-        result = await process_all_files_and_search(req.session_id)
-        return result
+        session = get_or_create_session(req.session_id)
+        result = await dialog.begin(session)
+        return {"success": True, "response": result["response"],
+                "kp_file": result.get("kp_file"), "kp_filename": result.get("kp_filename")}
     except Exception as exc:
-        logger.error("Search error: %s", exc, exc_info=True)
-        return {"success": False, "message": f"Ошибка поиска: {exc}"}
+        logger.error("Questionnaire start error: %s", exc, exc_info=True)
+        return {"success": False, "message": f"Ошибка: {exc}"}
 
 
 @app.get("/api/download_kp/{session_id}/{filename}")

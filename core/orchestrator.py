@@ -26,6 +26,7 @@ class ChatSession:
         self.product_cards: list[dict] = []
         self.all_items: list[dict] = []
         self.all_filenames: list[str] = []
+        self.dialog: Optional[dict] = None
 
     def add_message(self, role: str, text: str):
         self.history.append({"role": role, "text": text})
@@ -36,6 +37,7 @@ class ChatSession:
         self.all_items = []
         self.all_filenames = []
         self.uploaded_docs = []
+        self.dialog = None
 
 
 import hashlib
