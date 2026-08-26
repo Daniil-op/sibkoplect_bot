@@ -276,27 +276,45 @@ async def generate(session) -> dict:
 
     session.dialog = None
     price_str = f"{position['price']:,.2f}".replace(",", " ").replace(".", ",")
-    cov = f"{sum_info['found']}/{sum_info['total']}"
+    src = f"{sum_info.get('etm', 0)} по ETM"
+    if sum_info.get("estimated"):
+        src += f" + {sum_info['estimated']} по рынку (ETM промолчал)"
     resp = (f"✅ КП готово: **{marka}**\n\n"
             f"💰 Итого с НДС: **{price_str} ₽** "
-            f"(Σ покупных × k{position['_coefficient']}; цены по {cov} позициям)\n\n"
+            f"(Σ покупных × k{position['_coefficient']}; цены: {src}, всего {sum_info['total']} поз.)\n\n"
             f"⚠️ Бюджетная оценка — может быть скорректирована.")
     return {"response": resp, "kp_file": str(kp_path), "kp_filename": kp_filename}
 
 
 async def compute_sum_components(items: list[dict]) -> dict:
-    """Σ рыночной/ETM стоимости покупных узлов по распознанным позициям."""
+    """Σ стоимости покупных узлов. Цена берётся из ETM; если ETM ничего не вернул
+    по позиции — из справочника примерных рыночных цен (core.price_fallback),
+    чтобы КП формировалось всегда, а не спотыкалось на пустых ценах ETM."""
     from core.orchestrator import _search_items_in_etm  # ленивый импорт, чтобы не было цикла
+    from core import price_fallback as PF
+
     cards = await _search_items_in_etm(items)
     total = 0.0
-    found = 0
+    etm = 0          # цена взята из ETM
+    estimated = 0    # цена оценена справочником (ETM промолчал)
     for c in cards:
+        qty = int(c.get("source_qty", 1) or 1)
         price = float(c.get("price_with_vat", 0) or 0)
         if price > 0:
-            qty = int(c.get("source_qty", 1) or 1)
-            total += price * qty
-            found += 1
-    return {"sum": round(total, 2), "found": found, "total": len(cards), "cards": cards}
+            etm += 1
+        else:
+            price = PF.estimate_price(c.get("source_name", ""), c.get("source_params", ""))
+            if price > 0:
+                estimated += 1
+        total += price * qty
+    return {
+        "sum": round(total, 2),
+        "found": etm + estimated,   # всего позиций с ценой
+        "etm": etm,
+        "estimated": estimated,
+        "total": len(cards),
+        "cards": cards,
+    }
 
 
 def _compose_marka(ptype: str, answers: dict) -> str:
