@@ -129,11 +129,17 @@ async def process_uploaded_file(file_path: str | Path, session_id: str) -> dict:
     new_project = (parsed.get("project_name") or "").strip()
     new_items = parsed.get("items", [])
     existing_names = {i.get("name", "").lower() for i in session.all_items}
+    import re as _re
     added = 0
     for item in new_items:
-        if item.get("name", "").lower() not in existing_names:
+        nm = item.get("name", "").lower()
+        # строки, являющиеся самим изделием (КТП/подстанция целиком), а не комплектующей,
+        # в состав и цену не включаем — иначе получаем «изделие внутри изделия»
+        if "подстанц" in nm or _re.match(r"^\s*\d?\s*(ктп|крун)\b[\s\-]", nm):
+            continue
+        if nm not in existing_names:
             session.all_items.append(item)
-            existing_names.add(item.get("name", "").lower())
+            existing_names.add(nm)
             added += 1
 
     if session.parsed_tz is None:

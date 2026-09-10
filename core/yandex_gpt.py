@@ -177,6 +177,18 @@ class YandexGPTClient:
                 logger.error("YandexGPT call failed: %s", exc)
                 return None
 
+    async def answer_by_pue(self, question: str, context: str) -> Optional[str]:
+        """Ответ на вопрос по нормам, опираясь ТОЛЬКО на найденные пункты ПУЭ (context)."""
+        system = (
+            "Ты — консультант по ПУЭ-7 (Правила устройства электроустановок). "
+            "Отвечай кратко и по делу, опираясь ТОЛЬКО на приведённые ниже пункты ПУЭ. "
+            "Обязательно указывай номер пункта, на который опираешься "
+            "(например: «согласно п. 4.2.98…»). Если в приведённых пунктах прямого "
+            "ответа нет — так и скажи, ничего не выдумывай."
+        )
+        user = f"Пункты ПУЭ:\n{context}\n\nВопрос: {question}"
+        return await self._call(system, user, temperature=0.2, max_tokens=1500)
+
     async def parse_tz(self, tz_text: str, images: list[dict] | None = None) -> Optional[dict]:
         if images:
             if tz_text and len(tz_text.strip()) > 20:

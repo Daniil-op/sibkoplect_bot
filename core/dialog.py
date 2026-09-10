@@ -275,6 +275,11 @@ async def generate(session) -> dict:
         return {"response": f"Ошибка генерации КП: {exc}"}
 
     session.dialog = None
+
+    # Проверка проекта по нормам ПУЭ-7 (чистая логика, работает без YandexGPT)
+    from core import compliance
+    norms_block = compliance.run(getattr(session, "all_items", []), answers, ptype, power)
+
     price_str = f"{position['price']:,.2f}".replace(",", " ").replace(".", ",")
     src = f"{sum_info.get('etm', 0)} по ETM"
     if sum_info.get("estimated"):
@@ -283,6 +288,8 @@ async def generate(session) -> dict:
             f"💰 Итого с НДС: **{price_str} ₽** "
             f"(Σ покупных × k{position['_coefficient']}; цены: {src}, всего {sum_info['total']} поз.)\n\n"
             f"⚠️ Бюджетная оценка — может быть скорректирована.")
+    if norms_block:
+        resp += "\n\n" + norms_block
     return {"response": resp, "kp_file": str(kp_path), "kp_filename": kp_filename}
 
 

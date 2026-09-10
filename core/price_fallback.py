@@ -50,7 +50,7 @@ PRICE_TABLE = [
     (r"ва\s?57[\-\s]?35",                             13_000),   # ВА57-35 (~250А)
     (r"tem7|\btem\b",                                 12_000),   # TEM7 литой корпус
     (r"tgb3|\btgb\b|\btgm\b|\btgw\b",                  1_200),   # модульные автоматы
-    (r"\bва\b|автомат",                                3_000),   # прочие автоматы НН
+    # обобщённые автоматы/ACB/QF — по номиналу тока (см. _breaker_price_by_amp в estimate_price)
     # --- учёт и приборы ---
     (r"меркурий|сч[её]тчик|прибор\s*уч[её]т",          8_000),   # счётчик
     (r"амперметр|вольтметр|киловольт|\bа72\b|\bв72\b",  2_000),  # стрелочные приборы
@@ -84,9 +84,30 @@ def _is_power_transformer(t: str) -> bool:
     # и НЕ «силовой выключатель» — поэтому требуем именно признак трансформатора
     if not re.search(r"тмг|\bтм[\-\s]?\d|тсл|масл|трансформатор", t):
         return False
-    if re.search(r"тока|напряж|собствен|нулев|\bтсн\b|олсп|\bтол\b|знолп|тзлк", t):
+    if re.search(r"тока|напряж|собствен|нулев|\bтсн\b|олсп|\bтол\b|знолп|тзлк|подстанц|комплектн", t):
         return False
     return True
+
+
+# Обобщённый автомат/ACB без известной марки — цена по номиналу тока (А), с НДС, ₽.
+_BREAKER_STEPS = [(100, 5_000), (160, 8_000), (250, 12_000), (400, 18_000),
+                  (630, 26_000), (1000, 45_000), (1600, 150_000), (2500, 230_000)]
+
+
+def _breaker_price_by_amp(a: int) -> float:
+    for lim, price in _BREAKER_STEPS:
+        if a <= lim:
+            return float(price)
+    return 320_000.0
+
+
+def _amp(text: str):
+    """Номинал тока (А) из имени: 'In=630', '630А', '1600A'. Берём наибольший."""
+    t = text.lower()
+    vals = [int(m.group(1)) for m in re.finditer(r'in\s*=?\s*(\d{1,4})', t)]
+    vals += [int(m.group(1)) for m in re.finditer(r'(\d{1,4})\s*[аa]\b', t)]
+    vals = [v for v in vals if 5 <= v <= 6300]
+    return max(vals) if vals else None
 
 
 def estimate_price(name: str, parameters: str = "") -> float:
@@ -105,6 +126,13 @@ def estimate_price(name: str, parameters: str = "") -> float:
     for pattern, price in PRICE_TABLE:
         if re.search(pattern, t):
             return float(price)
+
+    # обобщённый автомат/ACB/QF без известной марки — по номиналу тока
+    if re.search(r'\bqf\b|\bacb\b|s\.?pact|автомат|выключател|\bва\b', t) \
+            and not re.search(r'нагрузк|\bвна\b|внал', t):
+        a = _amp(t)
+        if a:
+            return _breaker_price_by_amp(a)
 
     return float(DEFAULT_PRICE)
 
