@@ -344,13 +344,33 @@ def prepare_document_for_gpt(file_path: str | Path) -> dict:
     return result
 
 
+def _find_poppler():
+    """Ищет распакованный poppler в проекте (папка poppler-*), чтобы не зависеть от системного PATH."""
+    import glob, os
+    roots = [os.getcwd(), str(Path(__file__).resolve().parent.parent)]
+    for root in dict.fromkeys(roots):
+        for pat in ("poppler-*/Library/bin", "poppler-*/bin", "poppler*/Library/bin", "poppler*/bin"):
+            for d in glob.glob(os.path.join(root, pat)):
+                if os.path.exists(os.path.join(d, "pdftoppm.exe")) or os.path.exists(os.path.join(d, "pdftoppm")):
+                    return os.path.abspath(d)
+    return None
+
+
 def _pdf_pages_to_images(pdf_path: Path) -> list[dict]:
     """Конвертирует страницы PDF в изображения base64."""
     images = []
     try:
         import pdf2image
         import io
-        pages = pdf2image.convert_from_path(str(pdf_path), dpi=110, fmt="jpeg")
+        kwargs = {"dpi": 110, "fmt": "jpeg"}
+        pp = _find_poppler()
+        if pp:
+            kwargs["poppler_path"] = pp
+            logger.info("poppler найден в проекте: %s", pp)
+        else:
+            logger.warning("poppler не найден в проекте — положи распакованный poppler "
+                           "в папку poppler-26.02.0/ рядом с main.py, иначе чертежи-PDF не читаются")
+        pages = pdf2image.convert_from_path(str(pdf_path), **kwargs)
         for page_img in pages[:5]:
             buf = io.BytesIO()
             page_img.save(buf, format="JPEG", quality=85)

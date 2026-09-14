@@ -145,7 +145,7 @@ def _value_label(q: dict, val) -> str:
 # ─────────────────────────── публичный API диалога ───────────────────────────
 def is_active(session) -> bool:
     st = getattr(session, "dialog", None)
-    return bool(st) and st.get("phase") in ("asking", "confirm")
+    return bool(st) and st.get("phase") in ("asking", "confirm", "await_type")
 
 
 async def begin(session) -> dict:
@@ -160,7 +160,9 @@ async def begin(session) -> dict:
     pre = await Q.prefill_from_text(text)
     ptype = pre.get("product_type")
     if not ptype:
-        return {"response": "Не смог определить тип изделия по документу. Это КТП или КРУН? Напишите, и приложите проект."}
+        # тип не определился — остаёмся в активном диалоге, чтобы ответ не улетел в консультацию
+        session.dialog = {"phase": "await_type", "answers": pre.get("answers", {}), "text": text}
+        return {"response": "Не смог определить тип изделия по документу. Это КТП или КРУН? Напишите одним словом."}
 
     state = {
         "phase": "asking",
@@ -184,19 +186,52 @@ async def begin(session) -> dict:
     return {"response": intro + Q.render_question(Q._by_id(ptype, state["pending"][0]))}
 
 
+def _start_asking(session, ptype: str, answers: dict, text: str) -> dict:
+    """Собирает состояние опроса с выбранным типом и делает диалог активным."""
+    answers = answers or {}
+    state = {
+        "phase": "asking",
+        "product_type": ptype,
+        "answers": answers,
+        "marka": extract_marka(text or ""),
+        "composition": _composition_from_items(getattr(session, "all_items", [])),
+        "pending": [q["id"] for q in Q.remaining_questions(ptype, answers)],
+        "idx": 0,
+    }
+    session.dialog = state
+    return state
+
+
 async def handle(session, user_text: str) -> dict:
     """Обрабатывает ответ клиента в активном диалоге. Может вернуть kp_file/kp_filename."""
     state = session.dialog
+
+    if state.get("phase") == "await_type":
+        a = (user_text or "").strip().lower()
+        if "крун" in a:
+            chosen = "KRUN"
+        elif "ктп" in a:
+            chosen = "KTP"
+        else:
+            return {"response": "Напишите тип изделия одним словом: КТП или КРУН."}
+        ns = _start_asking(session, chosen, state.get("answers", {}), state.get("text", ""))
+        title = ns["marka"] or ("КТП" if chosen == "KTP" else "КРУН")
+        if not ns["pending"]:
+            ns["phase"] = "confirm"
+            return {"response": f"Принял: **{title}**.\n\n" + _config_summary(ns)}
+        return {"response": f"Принял тип: **{title}**. Уточню параметры.\n\n"
+                            + Q.render_question(Q._by_id(chosen, ns["pending"][0]))}
+
     ptype = state["product_type"]
 
     if state["phase"] == "confirm":
         ans = (user_text or "").strip().lower()
-        if any(w in ans for w in ["да", "сформир", "готов", "ок", "давай", "yes"]):
+        if any(w in ans for w in ["да", "сформир", "готов", "ок", "давай", "yes", "1", "+", "y"]):
             return await generate(session)
-        if any(w in ans for w in ["нет", "отмен", "стоп", "измен"]):
+        if any(w in ans for w in ["нет", "отмен", "стоп", "измен", "2", "-", "n"]):
             session.dialog = None
             return {"response": "Ок, отменил. Можете прислать другой проект или начать заново."}
-        return {"response": "Сформировать КП? Ответьте «да» или «нет»."}
+        return {"response": "Сформировать КП? Ответьте «да» или «нет» (или 1 / 2)."}
 
     # phase == "asking"
     qid = state["pending"][state["idx"]]

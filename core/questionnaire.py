@@ -123,6 +123,53 @@ def _fields_for_prompt(product_type: str) -> str:
     return "\n".join(lines)
 
 
+def _hint_fill_krun(text: str, answers: dict) -> dict:
+    """Детерминированная дочитка КРУН по тексту документа: правит/дозаполняет поля,
+    которые GPT-предзаполнение часто читает неверно на мутной OCR-схеме
+    (напряжение, оперток, разъединители, ТНП и т.п.). Работает без нейросети."""
+    t = (text or "").lower()
+    a = dict(answers or {})
+
+    def has(*subs):
+        return any(x in t for x in subs)
+
+    # напряжение сети: ловим 6/10/35 в любом порядке ("10 кВ", "кВ 10", "сборных шин ... 10")
+    import re as _re
+    mv = (_re.search(r"сборных\s+шин[^\n]{0,25}?\b(6|10|35)\b", t)
+          or _re.search(r"\b(6|10|35)\s*кв\b", t)
+          or _re.search(r"\bкв[.,\s]{1,4}(6|10|35)\b", t)
+          or _re.search(r"напряжени\w{0,3}[^\n]{0,25}?\b(6|10|35)\b", t))
+    if mv:
+        a["krun_voltage"] = mv.group(1)
+
+    # оперток: знак "=" перед 220 = постоянный ток
+    if has("=220", "= 220", "постоянн"):
+        a["krun_operating_supply"] = "220dc"
+    elif has("~220", "переменн") and not a.get("krun_operating_supply"):
+        a["krun_operating_supply"] = "220ac"
+
+    # разъединители РВЗ (есть в тексте -> стоят; исправляем ошибочное "Нет")
+    if has("рвз", "разъединител"):
+        a["krun_bus_disc"] = "rvz"
+        a["krun_line_disc"] = "rvz"
+
+    # трансформатор нулевой последовательности (ТНП)
+    if has("тзлкр"):
+        a["krun_zero_ct"] = "tzlkr"
+    elif has("тзлк", "нулевой последовательн"):
+        a["krun_zero_ct"] = "tzlk"
+
+    # дозаполнение, если GPT оставил пусто
+    if has("знолп") and not a.get("krun_vt"):
+        a["krun_vt"] = "znolp"
+    if has("олсп") and not a.get("krun_aux_tr"):
+        a["krun_aux_tr"] = "olsp"
+    if has("кэпс", "км 10-25") and not a.get("krun_breaker"):
+        a["krun_breaker"] = "bb_keps"
+
+    return a
+
+
 async def prefill_from_text(text: str, product_type: Optional[str] = None) -> dict:
     """
     Читает документ и предзаполняет анкету.
@@ -163,6 +210,8 @@ async def prefill_from_text(text: str, product_type: Optional[str] = None) -> di
         data = {}
 
     answers = _validate_answers(product_type, data)
+    if product_type == "KRUN":
+        answers = _validate_answers(product_type, _hint_fill_krun(text, answers))
     required_ids = [q["id"] for q in _questions(product_type) if q.get("required")]
     filled = [qid for qid in answers]
     missing = [qid for qid in required_ids if qid not in answers]

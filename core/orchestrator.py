@@ -400,6 +400,20 @@ async def chat_message(session_id: str, message: str) -> str:
             return _format_kp_text(result["kp"])
         return result["message"]
 
+    # Консультация по нормам: если в ПУЭ нашлись релевантные пункты — отвечаем по ним
+    try:
+        from core import pue_kb
+        if pue_kb.available():
+            ctx = pue_kb.context_for(message)
+            if ctx:
+                answer = await yandex_gpt.answer_by_pue(message, ctx)
+                if answer:
+                    session.add_message("user", message)
+                    session.add_message("assistant", answer)
+                    return answer
+    except Exception as exc:
+        logger.warning("PUE consult failed: %s", exc)
+
     response = await yandex_gpt.chat(message, session.history)
     session.add_message("user", message)
     session.add_message("assistant", response)
